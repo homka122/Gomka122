@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/homka122/Gomka122/internal/domain"
+	"github.com/homka122/Gomka122/collector/internal/domain"
 )
 
 type GithubRepositoryAdapter interface {

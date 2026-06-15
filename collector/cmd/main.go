@@ -6,7 +6,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/homka122/Gomka122/internal/adapter"
+	"github.com/homka122/Gomka122/collector/internal/adapter"
 	pb "github.com/homka122/Gomka122/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
