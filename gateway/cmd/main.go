@@ -1,0 +1,29 @@
+package main
+
+import (
+	"log"
+	"net/http"
+
+	"github.com/homka122/Gomka122/gateway/internal/adapter/collector"
+	controller "github.com/homka122/Gomka122/gateway/internal/controller/http"
+	"github.com/homka122/Gomka122/gateway/internal/usecase"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+)
+
+func main() {
+	conn, error := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if error != nil {
+		panic(error)
+	}
+	defer conn.Close()
+
+	collector := collector.NewCollector(conn)
+
+	repositoryUseCase := usecase.NewRepositoryUseCase(collector)
+
+	handler := controller.NewHandler(repositoryUseCase)
+
+	http.HandleFunc("/", handler.GetRepository)
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
