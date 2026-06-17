@@ -1,0 +1,11 @@
+package domain
+
+import "time"
+
+type Repository struct {
+	Name        string    `json:"name" example:"homka122"`
+	Description string    `json:"description" example:"homka's repo"`
+	Stars       int32     `json:"stars" example:"122"`
+	Forks       int32     `json:"forks" example:"2"`
+	CreateDate  time.Time `json:"create_date" example:"2026-03-03T16:45:04Z"`
+}
