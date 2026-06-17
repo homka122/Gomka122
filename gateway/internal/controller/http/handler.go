@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -15,13 +16,21 @@ type RepositoryUseCase interface {
 	GetRepository(owner, repo string) (domain.Repository, error)
 }
 
-type Handler struct {
-	RepositoryUseCase RepositoryUseCase
+type PingUseCase interface {
+	PingAll() (domain.ServicesInfo, error)
 }
 
-func NewHandler(rp RepositoryUseCase) Handler {
+type Handler struct {
+	RepositoryUseCase RepositoryUseCase
+	PingUseCase       PingUseCase
+	log               *slog.Logger
+}
+
+func NewHandler(repositoryUsecase RepositoryUseCase, pingUsecase PingUseCase, log *slog.Logger) Handler {
 	return Handler{
-		RepositoryUseCase: rp,
+		RepositoryUseCase: repositoryUsecase,
+		PingUseCase:       pingUsecase,
+		log:               log,
 	}
 }
 
@@ -67,8 +76,11 @@ func (h *Handler) GetRepository(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.log.Debug("http: get request", "owner", owner, "repo", repo)
+
 	repository, error := h.RepositoryUseCase.GetRepository(owner, repo)
 	if error != nil {
+		h.log.Debug("http: error", "error", error)
 		switch apperror.CodeOf(error) {
 		case apperror.CodeNotFound:
 			writeJSONError(w, http.StatusNotFound, "not found")
@@ -87,4 +99,39 @@ func (h *Handler) GetRepository(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(repository)
+}
+
+// PingServices godoc
+//
+//	@Summary		Get status of services
+//	@Description	get status of services
+//	@ID				get-status-of-services
+//	@Tags			service
+//	@Accept			json
+//	@Produce		json
+//	@Success		200		{object}	domain.ServicesInfo
+//	@Failure		503		{object}	domain.ServicesInfo
+//	@Router			/api/ping [get]
+func (h *Handler) PingServices(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "wrong method")
+		return
+	}
+	h.log.Debug("http: ping request")
+
+	servicesInfo, err := h.PingUseCase.PingAll()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "internal error: %v\n", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if servicesInfo.Status == domain.ServicesStatusOk {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+
+	_ = json.NewEncoder(w).Encode(servicesInfo)
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/homka122/Gomka122/collector/internal/adapter"
 	"github.com/homka122/Gomka122/collector/internal/config"
 	apperror "github.com/homka122/Gomka122/internal/errors"
-	pb "github.com/homka122/Gomka122/proto"
+	pb "github.com/homka122/Gomka122/proto/collector"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -47,6 +47,10 @@ func (s *server) GetRepository(ctx context.Context, req *pb.GetRepositoryRequest
 		Forks:       repo.Forks,
 		CreateDate:  timestamppb.New(repo.Create_date),
 	}, nil
+}
+
+func (s *server) Ping(_ context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
+	return &pb.PingResponse{Reply: "pong"}, nil
 }
 
 func main() {

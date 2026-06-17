@@ -6,12 +6,13 @@ import (
 	"net/http"
 
 	"github.com/homka122/Gomka122/gateway/internal/adapter/collector"
+	"github.com/homka122/Gomka122/gateway/internal/adapter/processor"
+	"github.com/homka122/Gomka122/gateway/internal/adapter/subscriber"
 	"github.com/homka122/Gomka122/gateway/internal/config"
 	controller "github.com/homka122/Gomka122/gateway/internal/controller/http"
 	"github.com/homka122/Gomka122/gateway/internal/usecase"
+	"github.com/homka122/Gomka122/internal/logger"
 	httpSwagger "github.com/swaggo/http-swagger"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 //	@title		Gomka122 API
@@ -25,26 +26,29 @@ import (
 //	@license.url	https://mit-license.org/
 
 //	@host		localhost:8080
-//	@BasePath	/api/v1
+//	@BasePath	/
 
 func main() {
 	cfg := config.Load()
+	logger := logger.Load("DEBUG")
 
-	conn, error := grpc.NewClient(cfg.CollectorAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if error != nil {
-		panic(error)
-	}
-	defer conn.Close()
+	processor := processor.NewProcessor(cfg, logger)
+	collector := collector.NewCollector(cfg, logger)
+	subscriber := subscriber.NewSubscriber(cfg, logger)
 
-	collector := collector.NewCollector(conn)
+	repositoryUseCase := usecase.NewRepositoryUseCase(processor, logger)
+	pingUseCase := usecase.NewPingUsecase(map[string]usecase.Pinger{
+		"collector":  collector,
+		"processor":  processor,
+		"subscriber": subscriber,
+	}, logger)
 
-	repositoryUseCase := usecase.NewRepositoryUseCase(collector)
-
-	handler := controller.NewHandler(repositoryUseCase)
+	handler := controller.NewHandler(repositoryUseCase, pingUseCase, logger)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/docs/swagger/", httpSwagger.Handler(httpSwagger.URL(fmt.Sprintf("http://localhost:%s/docs/swagger/doc.json", cfg.Port))))
 	mux.HandleFunc("/repo/{owner}/{repo}", handler.GetRepository)
+	mux.HandleFunc("/api/ping", handler.PingServices)
 
 	log.Printf("run server on %s port\n", cfg.Port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", cfg.Port), mux))
