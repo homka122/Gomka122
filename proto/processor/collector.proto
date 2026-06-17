@@ -1,13 +1,13 @@
 syntax = "proto3";
 
-package collector;
+package processor;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/homka122/Gomka122/proto";
+option go_package = "github.com/homka122/Gomka122/proto/processor";
 
-service CollectorService {
-    rpc GetRepository (GetRepositoryRequest) returns (GetRepositoryResponse);
+service ProcessorService {
+  rpc GetRepository(GetRepositoryRequest) returns (GetRepositoryResponse);
 }
 
 message GetRepositoryRequest {
