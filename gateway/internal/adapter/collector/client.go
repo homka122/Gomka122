@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/homka122/Gomka122/proto"
+	pbProcessor "github.com/homka122/Gomka122/proto/processor"
 )
 
 type Collector struct {
@@ -23,9 +23,9 @@ func NewCollector(conn *grpc.ClientConn) Collector {
 }
 
 func (c Collector) GetRepository(owner, repo string) (domain.Repository, error) {
-	client := pb.NewCollectorServiceClient(c.conn)
+	client := pbProcessor.NewProcessorServiceClient(c.conn)
 
-	repository, error := client.GetRepository(context.Background(), &pb.GetRepositoryRequest{Owner: owner, Repo: repo})
+	repository, error := client.GetRepository(context.Background(), &pbProcessor.GetRepositoryRequest{Owner: owner, Repo: repo})
 	if error != nil {
 		switch status.Code(error) {
 		case codes.NotFound:

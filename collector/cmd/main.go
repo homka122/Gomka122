@@ -9,7 +9,7 @@ import (
 	"github.com/homka122/Gomka122/collector/internal/adapter"
 	"github.com/homka122/Gomka122/collector/internal/config"
 	apperror "github.com/homka122/Gomka122/internal/errors"
-	pb "github.com/homka122/Gomka122/proto"
+	pb "github.com/homka122/Gomka122/proto/collector"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
