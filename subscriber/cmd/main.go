@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
+	"net/http"
+	"time"
 
+	"github.com/homka122/Gomka122/internal/github"
 	pbSubscriber "github.com/homka122/Gomka122/proto/subscriber"
+	"github.com/homka122/Gomka122/subscriber/internal/adapter"
 	"github.com/homka122/Gomka122/subscriber/internal/config"
 	controller "github.com/homka122/Gomka122/subscriber/internal/controller/grpc"
 	"github.com/homka122/Gomka122/subscriber/internal/usecase"
@@ -20,7 +23,7 @@ func main() {
 
 	ctx := context.Background()
 
-	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_DSN"))
+	pool, err := pgxpool.New(ctx, cfg.DB_DSN)
 	if err != nil {
 		log.Fatalf("create pg pool: %v", err)
 	}
@@ -35,10 +38,14 @@ func main() {
 		panic(err)
 	}
 
-	// postgresAdapter := adapter.NewSubscriptionPostgresAdapter(pool)
+	githubClient := github.NewClient(http.Client{Timeout: time.Second * 3})
 
-	usecase := usecase.NewPingUsecase()
-	server := controller.NewServer(usecase)
+	postgresAdapter := adapter.NewSubscriptionPostgresAdapter(pool)
+	githubAdapter := adapter.NewGithubRepositoryAdapter(githubClient)
+
+	pingUsecase := usecase.NewPingUsecase()
+	subscriptionUsecase := usecase.NewSubscriptionUsecase(githubAdapter, postgresAdapter)
+	server := controller.NewServer(pingUsecase, subscriptionUsecase)
 
 	grpcServer := grpc.NewServer()
 	pbSubscriber.RegisterSubscriberServiceServer(grpcServer, server)
