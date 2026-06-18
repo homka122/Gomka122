@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
+	"time"
 
 	"github.com/homka122/Gomka122/collector/internal/adapter"
 	"github.com/homka122/Gomka122/collector/internal/config"
 	apperror "github.com/homka122/Gomka122/internal/errors"
+	"github.com/homka122/Gomka122/internal/github"
 	pb "github.com/homka122/Gomka122/proto/collector"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -60,8 +63,11 @@ func main() {
 		panic(err)
 	}
 
+	client := http.Client{Timeout: 10 * time.Second}
+	ghClient := github.NewClient(client)
+
 	grpcServer := grpc.NewServer()
-	pb.RegisterCollectorServiceServer(grpcServer, &server{gh: adapter.NewGithubRepositoryAdapter()})
+	pb.RegisterCollectorServiceServer(grpcServer, &server{gh: adapter.NewGithubRepositoryAdapter(ghClient)})
 
 	log.Printf("grpc listen on %s port", cfg.Port)
 
