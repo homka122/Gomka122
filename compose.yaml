@@ -4,11 +4,16 @@ services:
             context: .
             dockerfile: Dockerfile.collector
         environment:
+            GITHUB_TOKEN: ${GITHUB_TOKEN}
             COLLECTOR_PORT: "50052"
             SUBSCRIBER_ADDR: "subscriber:50053"
+            KAFKA_BROKER: "kafka:9092"
         image: collector
         ports:
             - "50052:50052"
+        depends_on:
+            kafka-init:
+                condition: service_completed_successfully
 
     gateway:
         build:
@@ -33,30 +38,39 @@ services:
             dockerfile: Dockerfile.processor
         environment:
             COLLECTOR_ADDR: "collector:50052"
+            SUBSCRIBER_ADDR: "subscriber:50053"
             PROCESSOR_PORT: "50051"
+            KAFKA_BROKER: "kafka:9092"
+            DB_DSN: "postgres://postgres:postgres@postgres-processor:5432/repositories?sslmode=disable"
         image: processor
         ports:
             - "50051:50051"
         depends_on:
-            - collector
+            kafka-init:
+                condition: service_completed_successfully
+            collector:
+                condition: service_started
+            migrate-processor:
+                condition: service_completed_successfully
 
     subscriber:
         build:
             context: .
             dockerfile: Dockerfile.subscriber
         environment:
+            GITHUB_TOKEN: ${GITHUB_TOKEN}
             SUBSCRIBER_PORT: "50053"
-            DB_DSN: "postgres://postgres:postgres@postgres:5432/subscribers?sslmode=disable"
+            DB_DSN: "postgres://postgres:postgres@postgres-subscriber:5432/subscribers?sslmode=disable"
         image: subscriber
         ports:
             - "50053:50053"
         depends_on:
-            postgres:
-                condition: service_healthy
+            migrate-subscribe:
+                condition: service_completed_successfully
 
-    postgres:
+    postgres-subscriber:
         image: postgres:17-alpine
-        container_name: postgres
+        container_name: postgres-subscriber
         environment:
             POSTGRES_USER: postgres
             POSTGRES_PASSWORD: postgres
@@ -64,28 +78,127 @@ services:
         ports:
             - "5432:5432"
         volumes:
-            - postgres_data:/var/lib/postgresql/data
+            - postgres_data_subscriber:/var/lib/postgresql/data
         healthcheck:
             test: ["CMD-SHELL", "pg_isready -U postgres -d subscribers"]
             interval: 5s
             timeout: 3s
             retries: 5
 
-    migrate:
+    migrate-subscribe:
         image: migrate/migrate:v4.19.1
+        container_name: migrate-subscribe
         depends_on:
-            postgres:
+            postgres-subscriber:
                 condition: service_healthy
         volumes:
-            - ./migrations:/migrations:ro,Z
+            - ./subscriber/internal/adapter/postgres/migrations:/migrations:ro,Z
         command:
             [
                 "-path",
                 "/migrations",
                 "-database",
-                "postgres://postgres:postgres@postgres:5432/subscribers?sslmode=disable",
+                "postgres://postgres:postgres@postgres-subscriber:5432/subscribers?sslmode=disable",
                 "up",
             ]
 
+    postgres-processor:
+        image: postgres:17-alpine
+        container_name: postgres-processor
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_DB: repositories
+        ports:
+            - "5433:5432"
+        volumes:
+            - postgres_data_processor:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U postgres -d repositories"]
+            interval: 5s
+            timeout: 3s
+            retries: 5
+
+    migrate-processor:
+        image: migrate/migrate:v4.19.1
+        container_name: migrate-processor
+        depends_on:
+            postgres-processor:
+                condition: service_healthy
+        volumes:
+            - ./processor/internal/adapter/postgres/migrations:/migrations:ro,Z
+        command:
+            [
+                "-path",
+                "/migrations",
+                "-database",
+                "postgres://postgres:postgres@postgres-processor:5432/repositories?sslmode=disable",
+                "up",
+            ]
+
+    kafka:
+        image: apache/kafka:4.1.2
+        container_name: kafka
+        hostname: kafka
+        ports:
+            - "9094:9094"
+        environment:
+            KAFKA_NODE_ID: 1
+            KAFKA_PROCESS_ROLES: broker,controller
+            KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
+            KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:9094,CONTROLLER://:9093
+            KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9094
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+            KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+            KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+            KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+            KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+
+    kafka-init:
+        image: apache/kafka:4.1.2
+        depends_on:
+            kafka:
+                condition: service_healthy
+        entrypoint: ["/bin/bash"]
+        command:
+            - "-c"
+            - |
+                set -e
+
+                echo "Creating Kafka topics"
+
+                /opt/kafka/bin/kafka-topics.sh \
+                    --bootstrap-server kafka:9092 \
+                    --create \
+                    --if-not-exists \
+                    --topic repo.tasks.request \
+                    --partitions 1 \
+                    --replication-factor 1
+
+                /opt/kafka/bin/kafka-topics.sh \
+                    --bootstrap-server kafka:9092 \
+                    --create \
+                    --if-not-exists \
+                    --topic repo.tasks.response \
+                    --partitions 1 \
+                    --replication-factor 1
+
+                echo "Kafka topics created"
+
 volumes:
-    postgres_data:
+    postgres_data_processor:
+    postgres_data_subscriber:

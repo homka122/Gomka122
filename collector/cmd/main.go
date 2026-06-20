@@ -10,9 +10,13 @@ import (
 
 	"github.com/homka122/Gomka122/collector/internal/adapter"
 	"github.com/homka122/Gomka122/collector/internal/config"
+	"github.com/homka122/Gomka122/collector/internal/controller"
+	kafkaController "github.com/homka122/Gomka122/collector/internal/controller/kafka"
 	"github.com/homka122/Gomka122/collector/internal/domain"
+	"github.com/homka122/Gomka122/collector/internal/usecase"
 	apperror "github.com/homka122/Gomka122/internal/errors"
 	"github.com/homka122/Gomka122/internal/github"
+	kafkaClient "github.com/homka122/Gomka122/internal/kafka"
 	pb "github.com/homka122/Gomka122/proto/collector"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -105,14 +109,38 @@ func main() {
 	}
 	defer conn.Close()
 
+	client := http.Client{Timeout: 10 * time.Second}
+	ghClient := github.NewClient(client, cfg.GithubToken)
+	ghAdapter := adapter.NewGithubRepositoryAdapter(ghClient)
+
 	subscriptionAdapter := adapter.NewSubscriber(conn)
 
-	client := http.Client{Timeout: 10 * time.Second}
-	ghClient := github.NewClient(client)
+	kafkaProducerRequest := kafkaClient.NewKafkaProducer([]string{cfg.KafkaBroker}, "repo.tasks.request")
+	kafkaConsumerRequest := kafkaClient.NewKafkaReader([]string{cfg.KafkaBroker}, "repo.tasks.request", "collector")
+	kafkaAdapterRequest := adapter.NewKafkaAdapter(kafkaProducerRequest, kafkaConsumerRequest)
+
+	kafkaProducerResponse := kafkaClient.NewKafkaProducer([]string{cfg.KafkaBroker}, "repo.tasks.response")
+	kafkaConsumerResponse := kafkaClient.NewKafkaReader([]string{cfg.KafkaBroker}, "repo.tasks.response", "collector")
+	kafkaAdapterResponse := adapter.NewKafkaAdapter(kafkaProducerResponse, kafkaConsumerResponse)
+
+	taskerUsecase := usecase.NewTaskerUsecase(ghAdapter, kafkaAdapterResponse)
+	refresherUsecase := usecase.NewRefresherUsecase(subscriptionAdapter, kafkaAdapterRequest)
+
+	go func() {
+		if err := kafkaController.NewKafkaController(taskerUsecase, kafkaConsumerRequest).Run(); err != nil {
+			log.Printf("kafka err %v", err)
+		}
+	}()
+
+	go func() {
+		if err := controller.NewScheduler(refresherUsecase, time.Second*15).Run(); err != nil {
+			log.Printf("refresher err %v", err)
+		}
+	}()
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterCollectorServiceServer(grpcServer, &server{
-		gh:  adapter.NewGithubRepositoryAdapter(ghClient),
+		gh:  ghAdapter,
 		rp:  subscriptionAdapter,
 		cfg: cfg,
 	})

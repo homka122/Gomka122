@@ -1,0 +1,48 @@
+package usecase
+
+import (
+	"log"
+
+	"github.com/homka122/Gomka122/collector/internal/domain"
+	apperror "github.com/homka122/Gomka122/internal/errors"
+	kafkaClient "github.com/homka122/Gomka122/internal/kafka"
+)
+
+type GithubAdapter interface {
+	GetRepository(owner, repo string) (domain.GithubRepository, error)
+}
+
+type KafkaAdapter interface {
+	SendTaskResponse(task domain.Task, repo domain.GithubRepository) error
+	SendTaskResponseError(task domain.Task, status string, err error) error
+}
+
+type TaskerUsecase struct {
+	gh GithubAdapter
+	ka KafkaAdapter
+}
+
+func NewTaskerUsecase(gh GithubAdapter, ka KafkaAdapter) TaskerUsecase {
+	return TaskerUsecase{gh: gh, ka: ka}
+}
+
+func (tu TaskerUsecase) ProcessTask(task domain.Task) error {
+	repo, err := tu.gh.GetRepository(task.Owner, task.Repo)
+	if err != nil {
+		log.Printf("process task error %v", err)
+		switch apperror.CodeOf(err) {
+		case apperror.CodeNotFound:
+			return tu.ka.SendTaskResponseError(task, kafkaClient.STATUS_NOT_FOUND, err)
+		case apperror.CodeInvalidArgument:
+			return tu.ka.SendTaskResponseError(task, kafkaClient.STATUS_INVALID_ARGUMENT, err)
+		case apperror.CodeUnavailable:
+			return tu.ka.SendTaskResponseError(task, kafkaClient.STATUS_UNAVAILABLE, err)
+		default:
+			return tu.ka.SendTaskResponseError(task, kafkaClient.STATUS_INTERNAL, err)
+		}
+	}
+
+	log.Printf("get repo for kafka task for %v/%v", task.Owner, task.Repo)
+
+	return tu.ka.SendTaskResponse(task, repo)
+}

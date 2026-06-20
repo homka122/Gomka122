@@ -1,15 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 
-	collector "github.com/homka122/Gomka122/processor/internal/adapter"
+	kafkaClient "github.com/homka122/Gomka122/internal/kafka"
+	"github.com/homka122/Gomka122/processor/internal/adapter"
 	"github.com/homka122/Gomka122/processor/internal/config"
-	controller "github.com/homka122/Gomka122/processor/internal/controller/grpc"
+	controllerGRPC "github.com/homka122/Gomka122/processor/internal/controller/grpc"
+	controllerKafka "github.com/homka122/Gomka122/processor/internal/controller/kafka"
 	"github.com/homka122/Gomka122/processor/internal/usecase"
 	pbProcessor "github.com/homka122/Gomka122/proto/processor"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -21,16 +25,37 @@ func main() {
 		panic(err)
 	}
 
-	conn, err := grpc.NewClient(cfg.CollectorAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(cfg.SubscriberAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		panic(err)
 	}
 	defer conn.Close()
 
-	collector := collector.NewCollector(conn)
-	repositoryUsecase := usecase.NewRepositoryUsecase(collector)
+	pool, err := pgxpool.New(context.Background(), cfg.DB_DSN)
+	if err != nil {
+		log.Fatalf("create pg pool: %v", err)
+		panic(err)
+	}
+	defer pool.Close()
+
+	subscriber := adapter.NewSubscriber(conn)
+	postgres := adapter.NewPostgresAdapter(pool)
+
+	kafkaRequestProducer := kafkaClient.NewKafkaProducer([]string{cfg.KafkaBroker}, "repo.tasks.request")
+	kafkaResponseConsumer := kafkaClient.NewKafkaReader([]string{cfg.KafkaBroker}, "repo.tasks.response", "processor")
+	kafkaAdapter := adapter.NewKafkaAdapter(kafkaRequestProducer, kafkaResponseConsumer)
+
+	repositoryUsecase := usecase.NewRepositoryUsecase(postgres, kafkaAdapter, subscriber)
 	pingUsecase := usecase.NewPingUsecase()
-	server := controller.NewServer(repositoryUsecase, pingUsecase)
+	server := controllerGRPC.NewServer(repositoryUsecase, pingUsecase)
+
+	kafkaController := controllerKafka.NewKafkaController(repositoryUsecase, kafkaResponseConsumer)
+
+	go func() {
+		if err := kafkaController.Run(context.Background()); err != nil {
+			log.Print("kafka error $v", err)
+		}
+	}()
 
 	grpcServer := grpc.NewServer()
 	pbProcessor.RegisterProcessorServiceServer(grpcServer, server)
