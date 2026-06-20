@@ -5,7 +5,7 @@ import (
 	"log"
 	"net"
 
-	collector "github.com/homka122/Gomka122/processor/internal/adapter"
+	"github.com/homka122/Gomka122/processor/internal/adapter"
 	"github.com/homka122/Gomka122/processor/internal/config"
 	controller "github.com/homka122/Gomka122/processor/internal/controller/grpc"
 	"github.com/homka122/Gomka122/processor/internal/usecase"
@@ -27,7 +27,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	collector := collector.NewCollector(conn)
+	collector := adapter.NewCollector(conn)
 	repositoryUsecase := usecase.NewRepositoryUsecase(collector)
 	pingUsecase := usecase.NewPingUsecase()
 	server := controller.NewServer(repositoryUsecase, pingUsecase)
