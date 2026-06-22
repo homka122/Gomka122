@@ -5,11 +5,15 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/go-redis/redis"
+	"github.com/homka122/Gomka122/gateway/internal/adapter/cache"
 	"github.com/homka122/Gomka122/gateway/internal/adapter/collector"
 	"github.com/homka122/Gomka122/gateway/internal/adapter/processor"
+	"github.com/homka122/Gomka122/gateway/internal/adapter/ratelimiter"
 	"github.com/homka122/Gomka122/gateway/internal/adapter/subscriber"
 	"github.com/homka122/Gomka122/gateway/internal/config"
 	controller "github.com/homka122/Gomka122/gateway/internal/controller/http"
+	"github.com/homka122/Gomka122/gateway/internal/middleware"
 	"github.com/homka122/Gomka122/gateway/internal/usecase"
 	"github.com/homka122/Gomka122/internal/logger"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -44,16 +48,31 @@ func main() {
 	}, logger)
 	subscribeUseCase := usecase.NewSubscribeUseCase(subscriber, logger)
 
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: cfg.RedisAddr,
+	})
+
+	redisRateLimiter := ratelimiter.NewRedisRateLimiter(redisClient, float64(cfg.RateLimitReqPerSecond), cfg.RateLimitCapacity)
+	memoryRateLimiter := ratelimiter.NewMemoryBucketRateLimiter(cfg.RateLimitCapacity, cfg.RateLimitReqPerSecond)
+	ratelimiter := ratelimiter.NewFallbackRateLimiter(redisRateLimiter, memoryRateLimiter)
+	rateLimitMiddleware := middleware.RateLimitMiddleware(ratelimiter)
+
+	cacher := cache.NewRedisCacher(redisClient)
+	cacherMiddleware := middleware.CacheMiddleware(cacher, cfg.CacheTTL)
+
+	loggerMiddleware := middleware.LoggerMiddleware()
+
 	handler := controller.NewHandler(repositoryUseCase, pingUseCase, subscribeUseCase, logger)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/docs/swagger/", httpSwagger.Handler(httpSwagger.URL(fmt.Sprintf("http://localhost:%s/docs/swagger/doc.json", cfg.Port))))
-	mux.HandleFunc("/api/repositories/info", handler.GetRepository)
-	mux.HandleFunc("/api/ping", handler.PingServices)
-	mux.HandleFunc("POST /api/subscriptions", handler.Subscribe)
-	mux.HandleFunc("DELETE /api/subscriptions/{owner}/{repo}", handler.Unsubscribe)
-	mux.HandleFunc("GET /api/subscriptions", handler.GetSubscriptions)
-	mux.HandleFunc("GET /api/subscriptions/info", handler.GetSubscribedRepositories)
+	swaggerHandleFunc := httpSwagger.Handler(httpSwagger.URL(fmt.Sprintf("http://localhost:%s/docs/swagger/doc.json", cfg.Port)))
+	mux.Handle("/docs/swagger/", middleware.Chain(swaggerHandleFunc, rateLimitMiddleware))
+	mux.Handle("GET /api/repositories/info", middleware.Chain(handler.GetRepository(), loggerMiddleware, rateLimitMiddleware, cacherMiddleware))
+	mux.Handle("GET /api/ping", middleware.Chain(handler.PingServices(), loggerMiddleware, rateLimitMiddleware))
+	mux.Handle("POST /api/subscriptions", middleware.Chain(handler.Subscribe(), loggerMiddleware, rateLimitMiddleware))
+	mux.Handle("DELETE /api/subscriptions/{owner}/{repo}", middleware.Chain(handler.Unsubscribe(), loggerMiddleware, rateLimitMiddleware))
+	mux.Handle("GET /api/subscriptions", middleware.Chain(handler.GetSubscriptions(), loggerMiddleware, rateLimitMiddleware))
+	mux.Handle("GET /api/subscriptions/info", middleware.Chain(handler.GetSubscribedRepositories(), loggerMiddleware, rateLimitMiddleware, cacherMiddleware))
 
 	log.Printf("run server on %s port\n", cfg.Port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", cfg.Port), mux))
