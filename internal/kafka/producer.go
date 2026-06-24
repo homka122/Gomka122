@@ -17,9 +17,7 @@ func NewKafkaProducer(brokers []string, topic string) KafkaProducer {
 		Addr:         kafka.TCP(brokers...),
 		Topic:        topic,
 		Balancer:     &kafka.LeastBytes{},
-		RequiredAcks: kafka.RequireAll,
 		Async:        false,
-		BatchSize:    1,
 	}}
 }
 
