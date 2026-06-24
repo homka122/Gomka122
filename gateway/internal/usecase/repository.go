@@ -1,14 +1,15 @@
 package usecase
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/homka122/Gomka122/gateway/internal/domain"
 )
 
 type Processor interface {
-	GetRepository(owner, repo string) (*domain.Repository, error)
-	GetSubscribedRepository() ([](*domain.Repository), error)
+	GetRepository(ctx context.Context, owner, repo string) (*domain.Repository, error)
+	GetSubscribedRepository(ctx context.Context) ([](*domain.Repository), error)
 }
 
 type RepositoryUseCase struct {
@@ -20,10 +21,10 @@ func NewRepositoryUseCase(processor Processor, log *slog.Logger) *RepositoryUseC
 	return &RepositoryUseCase{Processor: processor, log: log}
 }
 
-func (r *RepositoryUseCase) GetRepository(owner, repo string) (*domain.Repository, error) {
-	return r.Processor.GetRepository(owner, repo)
+func (r *RepositoryUseCase) GetRepository(ctx context.Context, owner, repo string) (*domain.Repository, error) {
+	return r.Processor.GetRepository(ctx, owner, repo)
 }
 
-func (r *RepositoryUseCase) GetSubscribedRepository() ([](*domain.Repository), error) {
-	return r.Processor.GetSubscribedRepository()
+func (r *RepositoryUseCase) GetSubscribedRepository(ctx context.Context) ([](*domain.Repository), error) {
+	return r.Processor.GetSubscribedRepository(ctx)
 }

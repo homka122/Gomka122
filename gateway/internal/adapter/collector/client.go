@@ -33,8 +33,8 @@ func NewCollector(cfg config.Config, log *slog.Logger) Collector {
 	}
 }
 
-func (c Collector) Ping() (string, error) {
-	pong, err := c.client.Ping(context.Background(), &pbCollector.PingRequest{})
+func (c Collector) Ping(ctx context.Context) (string, error) {
+	pong, err := c.client.Ping(ctx, &pbCollector.PingRequest{})
 	if err != nil {
 		return "", apperror.New(apperror.CodeUnavailable, "collector unvailable")
 	}

@@ -19,6 +19,12 @@ func NewFallbackRateLimiter(primary RateLimiter, secondary RateLimiter) *Fallbac
 }
 
 func (rl *FallbackRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	default:
+	}
+
 	allowed, err := rl.primary.Allow(ctx, key)
 	if err == nil {
 		return allowed, nil

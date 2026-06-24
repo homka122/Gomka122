@@ -34,8 +34,8 @@ func NewSubscriber(cfg config.Config, log *slog.Logger) Subscriber {
 	}
 }
 
-func (s Subscriber) Subscribe(owner, repo string) error {
-	_, err := s.client.Subscribe(context.Background(), &pbSubscriber.SubscribeRequest{Owner: owner, Repo: repo})
+func (s Subscriber) Subscribe(ctx context.Context, owner, repo string) error {
+	_, err := s.client.Subscribe(ctx, &pbSubscriber.SubscribeRequest{Owner: owner, Repo: repo})
 	if err != nil {
 		return apperror.FromGRPC(err, "subscriber subscribe")
 	}
@@ -43,8 +43,8 @@ func (s Subscriber) Subscribe(owner, repo string) error {
 	return nil
 }
 
-func (s Subscriber) Unsubscribe(owner, repo string) error {
-	_, err := s.client.Unsubscribe(context.Background(), &pbSubscriber.UnsubscribeRequest{Owner: owner, Repo: repo})
+func (s Subscriber) Unsubscribe(ctx context.Context, owner, repo string) error {
+	_, err := s.client.Unsubscribe(ctx, &pbSubscriber.UnsubscribeRequest{Owner: owner, Repo: repo})
 	if err != nil {
 		return apperror.FromGRPC(err, "subscriber unsubscribe")
 	}
@@ -52,8 +52,8 @@ func (s Subscriber) Unsubscribe(owner, repo string) error {
 	return nil
 }
 
-func (s Subscriber) GetSubscriptions() ([]domain.Subscription, error) {
-	subs, err := s.client.GetSubscriptions(context.Background(), &pbSubscriber.GetSubscriptionsRequest{})
+func (s Subscriber) GetSubscriptions(ctx context.Context) ([]domain.Subscription, error) {
+	subs, err := s.client.GetSubscriptions(ctx, &pbSubscriber.GetSubscriptionsRequest{})
 	if err != nil {
 		return nil, apperror.FromGRPC(err, "subscriber get subscriptions")
 	}
@@ -69,8 +69,8 @@ func (s Subscriber) GetSubscriptions() ([]domain.Subscription, error) {
 	return result, nil
 }
 
-func (s Subscriber) Ping() (string, error) {
-	pong, err := s.client.Ping(context.Background(), &pbSubscriber.PingRequest{})
+func (s Subscriber) Ping(ctx context.Context) (string, error) {
+	pong, err := s.client.Ping(ctx, &pbSubscriber.PingRequest{})
 	if err != nil {
 		return "", apperror.New(apperror.CodeUnavailable, "processor unvailable")
 	}

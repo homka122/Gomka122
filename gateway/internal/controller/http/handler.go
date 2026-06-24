@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -15,18 +16,18 @@ import (
 )
 
 type RepositoryUseCase interface {
-	GetRepository(owner, repo string) (*domain.Repository, error)
-	GetSubscribedRepository() ([](*domain.Repository), error)
+	GetRepository(ctx context.Context, owner, repo string) (*domain.Repository, error)
+	GetSubscribedRepository(ctx context.Context) ([](*domain.Repository), error)
 }
 
 type PingUseCase interface {
-	PingAll() (domain.ServicesInfo, error)
+	PingAll(ctx context.Context) (domain.ServicesInfo, error)
 }
 
 type SubcribeUseCase interface {
-	Subscribe(owner, repo string) error
-	Unsubscribe(owner, repo string) error
-	GetSubscriptions() ([]domain.Subscription, error)
+	Subscribe(ctx context.Context, owner, repo string) error
+	Unsubscribe(ctx context.Context, owner, repo string) error
+	GetSubscriptions(ctx context.Context) ([]domain.Subscription, error)
 }
 
 type Handler struct {
@@ -121,7 +122,7 @@ func (h *Handler) GetRepository() http.Handler {
 			return
 		}
 
-		repository, error := h.RepositoryUseCase.GetRepository(owner, repo)
+		repository, error := h.RepositoryUseCase.GetRepository(r.Context(), owner, repo)
 		if error != nil {
 			h.log.Debug("http: error", "error", error)
 			switch apperror.CodeOf(error) {
@@ -170,7 +171,7 @@ func (h *Handler) PingServices() http.Handler {
 			return
 		}
 
-		servicesInfo, err := h.PingUseCase.PingAll()
+		servicesInfo, err := h.PingUseCase.PingAll(r.Context())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "internal error: %v\n", err)
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -229,7 +230,7 @@ func (h *Handler) Subscribe() http.Handler {
 			return
 		}
 
-		if err := h.SubscribeUseCase.Subscribe(subReq.Owner, subReq.Repo); err != nil {
+		if err := h.SubscribeUseCase.Subscribe(r.Context(), subReq.Owner, subReq.Repo); err != nil {
 			h.log.Debug("http: error", "error", err)
 			switch apperror.CodeOf(err) {
 			case apperror.CodeNotFound:
@@ -277,7 +278,7 @@ func (h *Handler) Unsubscribe() http.Handler {
 			return
 		}
 
-		if err := h.SubscribeUseCase.Unsubscribe(owner, repo); err != nil {
+		if err := h.SubscribeUseCase.Unsubscribe(r.Context(), owner, repo); err != nil {
 			h.log.Debug("http: error", "error", err)
 			switch apperror.CodeOf(err) {
 			case apperror.CodeNotFound:
@@ -312,7 +313,7 @@ func (h *Handler) Unsubscribe() http.Handler {
 //	@Router			/api/subscriptions [get]
 func (h *Handler) GetSubscriptions() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		subs, err := h.SubscribeUseCase.GetSubscriptions()
+		subs, err := h.SubscribeUseCase.GetSubscriptions(r.Context())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "internal error: %v\n", err)
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -338,7 +339,7 @@ func (h *Handler) GetSubscriptions() http.Handler {
 //	@Router			/api/subscriptions/info [get]
 func (h *Handler) GetSubscribedRepositories() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		repos, err := h.RepositoryUseCase.GetSubscribedRepository()
+		repos, err := h.RepositoryUseCase.GetSubscribedRepository(r.Context())
 		if err != nil {
 			switch apperror.CodeOf(err) {
 			case apperror.CodeUnavailable:

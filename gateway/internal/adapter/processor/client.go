@@ -35,8 +35,8 @@ func NewProcessor(cfg config.Config, log *slog.Logger) Processor {
 	}
 }
 
-func (p Processor) GetRepository(owner, repoName string) (*domain.Repository, error) {
-	res, err := p.client.GetRepository(context.Background(), &pbProcessor.GetRepositoryRequest{Owner: owner, Repo: repoName})
+func (p Processor) GetRepository(ctx context.Context, owner, repoName string) (*domain.Repository, error) {
+	res, err := p.client.GetRepository(ctx, &pbProcessor.GetRepositoryRequest{Owner: owner, Repo: repoName})
 	if err != nil {
 		return nil, apperror.FromGRPC(err, err.Error())
 	}
@@ -61,8 +61,8 @@ func (p Processor) GetRepository(owner, repoName string) (*domain.Repository, er
 	}
 }
 
-func (p Processor) GetSubscribedRepository() ([](*domain.Repository), error) {
-	repos, error := p.client.GetSubscribedRepository(context.Background(), &pbProcessor.GetSubscribedRepositoryRequest{})
+func (p Processor) GetSubscribedRepository(ctx context.Context) ([](*domain.Repository), error) {
+	repos, error := p.client.GetSubscribedRepository(ctx, &pbProcessor.GetSubscribedRepositoryRequest{})
 	if error != nil {
 		return nil, apperror.FromGRPC(error, "processor get subscribed repository")
 	}
@@ -91,8 +91,8 @@ func (p Processor) GetSubscribedRepository() ([](*domain.Repository), error) {
 	return result, nil
 }
 
-func (p Processor) Ping() (string, error) {
-	pong, err := p.client.Ping(context.Background(), &pbProcessor.PingRequest{})
+func (p Processor) Ping(ctx context.Context) (string, error) {
+	pong, err := p.client.Ping(ctx, &pbProcessor.PingRequest{})
 	if err != nil {
 		return "", apperror.New(apperror.CodeUnavailable, "processor unvailable")
 	}

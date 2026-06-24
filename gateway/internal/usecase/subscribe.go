@@ -1,15 +1,16 @@
 package usecase
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/homka122/Gomka122/gateway/internal/domain"
 )
 
 type Subscriber interface {
-	Subscribe(owner, repo string) error
-	Unsubscribe(owner, repo string) error
-	GetSubscriptions() ([]domain.Subscription, error)
+	Subscribe(ctx context.Context, owner, repo string) error
+	Unsubscribe(ctx context.Context, owner, repo string) error
+	GetSubscriptions(ctx context.Context) ([]domain.Subscription, error)
 }
 
 type SubscribeUseCase struct {
@@ -20,14 +21,14 @@ func NewSubscribeUseCase(subscriber Subscriber, log *slog.Logger) *SubscribeUseC
 	return &SubscribeUseCase{Subscriber: subscriber}
 }
 
-func (u *SubscribeUseCase) Subscribe(owner, repo string) error {
-	return u.Subscriber.Subscribe(owner, repo)
+func (u *SubscribeUseCase) Subscribe(ctx context.Context, owner, repo string) error {
+	return u.Subscriber.Subscribe(ctx, owner, repo)
 }
 
-func (u *SubscribeUseCase) Unsubscribe(owner, repo string) error {
-	return u.Subscriber.Unsubscribe(owner, repo)
+func (u *SubscribeUseCase) Unsubscribe(ctx context.Context, owner, repo string) error {
+	return u.Subscriber.Unsubscribe(ctx, owner, repo)
 }
 
-func (u *SubscribeUseCase) GetSubscriptions() ([]domain.Subscription, error) {
-	return u.Subscriber.GetSubscriptions()
+func (u *SubscribeUseCase) GetSubscriptions(ctx context.Context) ([]domain.Subscription, error) {
+	return u.Subscriber.GetSubscriptions(ctx)
 }

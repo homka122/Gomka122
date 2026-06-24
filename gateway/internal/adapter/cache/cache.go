@@ -24,6 +24,12 @@ func NewRedisCacher(client *redis.Client) RedisCacher {
 }
 
 func (rc RedisCacher) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	select {
+	case <-ctx.Done():
+		return nil, false, ctx.Err()
+	default:
+	}
+
 	data, err := rc.client.Get(key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {

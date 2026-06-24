@@ -80,6 +80,12 @@ func NewRedisRateLimiter(client *redis.Client, reqPerSecond float64, capacity in
 }
 
 func (rl *RedisBucketRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	default:
+	}
+
 	key = "rl:ip:" + key
 
 	now := float64(time.Now().UnixMicro()) / 1e6
