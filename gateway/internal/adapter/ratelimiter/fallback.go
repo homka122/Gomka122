@@ -11,14 +11,14 @@ type FallbackRateLimiter struct {
 	secondary RateLimiter
 }
 
-func NewFallbackRateLimiter(primary RateLimiter, secondary RateLimiter) FallbackRateLimiter {
-	return FallbackRateLimiter{
+func NewFallbackRateLimiter(primary RateLimiter, secondary RateLimiter) *FallbackRateLimiter {
+	return &FallbackRateLimiter{
 		primary:   primary,
 		secondary: secondary,
 	}
 }
 
-func (rl FallbackRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
+func (rl *FallbackRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
 	allowed, err := rl.primary.Allow(ctx, key)
 	if err == nil {
 		return allowed, nil

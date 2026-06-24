@@ -58,45 +58,36 @@ type RedisBucketRateLimiter struct {
 	refillRate     float64
 	refillInterval time.Duration
 	scriptSHA      string
-	scriptLoaded   bool
 }
 
-func NewRedisRateLimiter(client *redis.Client, reqPerSecond float64, capacity int) RedisBucketRateLimiter {
+func NewRedisRateLimiter(client *redis.Client, reqPerSecond float64, capacity int) *RedisBucketRateLimiter {
 	h := sha1.New()
 	h.Write([]byte(tokenBucketScript))
 	sha := fmt.Sprintf("%x", h.Sum(nil))
 
-	return RedisBucketRateLimiter{
+	sha, err := client.ScriptLoad(tokenBucketScript).Result()
+	if err != nil {
+		fmt.Printf("cannot load script %v", err)
+	}
+
+	return &RedisBucketRateLimiter{
 		client:         client,
 		capacity:       capacity,
 		refillRate:     1.0,
 		refillInterval: time.Duration(1000.0/reqPerSecond) * time.Millisecond,
 		scriptSHA:      sha,
-		scriptLoaded:   false,
 	}
 }
 
-func (rl RedisBucketRateLimiter) ensureScriptLoaded(ctx context.Context) {
-	if !rl.scriptLoaded {
-		sha, err := rl.client.ScriptLoad(tokenBucketScript).Result()
-		if err == nil {
-			rl.scriptSHA = sha
-			rl.scriptLoaded = true
-		}
-	}
-}
-
-func (rl RedisBucketRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
+func (rl *RedisBucketRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
 	key = "rl:ip:" + key
-
-	rl.ensureScriptLoaded(ctx)
 
 	now := float64(time.Now().UnixMicro()) / 1e6
 
 	args := []any{
 		rl.capacity,
 		rl.refillRate,
-		rl.refillInterval,
+		rl.refillInterval.Seconds(),
 		now,
 	}
 
@@ -108,12 +99,21 @@ func (rl RedisBucketRateLimiter) Allow(ctx context.Context, key string) (bool, e
 		if err != nil {
 			return false, fmt.Errorf("token bucket eval failed: %w", err)
 		}
-		rl.scriptLoaded = false
 	}
 
-	resultSlice, _ := result.([]int64)
+	resultSlice, ok := result.([]any)
+	if !ok {
+		return false, fmt.Errorf("unexpected redis result type: %T, value: %#v", result, result)
+	}
 
-	allowed := resultSlice[0] == 1
+	if len(resultSlice) < 1 {
+		return false, fmt.Errorf("empty redis result: %#v", result)
+	}
 
-	return allowed, nil
+	allowed, ok := resultSlice[0].(int64)
+	if !ok {
+		return false, fmt.Errorf("unexpected allowed type: %T, value: %#v", resultSlice[0], resultSlice[0])
+	}
+
+	return allowed == 1, nil
 }
