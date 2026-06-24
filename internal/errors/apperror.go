@@ -45,9 +45,9 @@ func ToGRPCCode(err error) codes.Code {
 		return codes.NotFound
 	case CodeUnavailable:
 		return codes.Unavailable
+	default:
+		return codes.Internal
 	}
-
-	panic("implement me")
 }
 
 func FromGRPC(err error, msg string) error {
@@ -64,7 +64,7 @@ func FromGRPC(err error, msg string) error {
 		return WrapCode(CodeInternal, msg, err)
 	default:
 		log.Default().Print("unknown error code", "error", err.Error())
-		return status.Error(codes.Unknown, err.Error())
+		return WrapCode(CodeInternal, msg, err)
 	}
 }
 

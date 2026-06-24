@@ -9,9 +9,7 @@ import (
 	"github.com/homka122/Gomka122/gateway/internal/domain"
 	apperror "github.com/homka122/Gomka122/internal/errors"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
 
 	pbProcessor "github.com/homka122/Gomka122/proto/processor"
 )
@@ -38,18 +36,9 @@ func NewProcessor(cfg config.Config, log *slog.Logger) Processor {
 }
 
 func (p Processor) GetRepository(owner, repoName string) (*domain.Repository, error) {
-	res, error := p.client.GetRepository(context.Background(), &pbProcessor.GetRepositoryRequest{Owner: owner, Repo: repoName})
-	if error != nil {
-		switch status.Code(error) {
-		case codes.NotFound:
-			return nil, apperror.New(apperror.CodeNotFound, error.Error())
-		case codes.InvalidArgument:
-			return nil, apperror.New(apperror.CodeInvalidArgument, error.Error())
-		case codes.Unavailable:
-			return nil, apperror.New(apperror.CodeUnavailable, error.Error())
-		default:
-			return nil, apperror.New(apperror.CodeInternal, error.Error())
-		}
+	res, err := p.client.GetRepository(context.Background(), &pbProcessor.GetRepositoryRequest{Owner: owner, Repo: repoName})
+	if err != nil {
+		return nil, apperror.FromGRPC(err, err.Error())
 	}
 
 	repo := res.Repository
@@ -68,7 +57,7 @@ func (p Processor) GetRepository(owner, repoName string) (*domain.Repository, er
 	case pbProcessor.RepositoryStatus_REPOSITORY_STATUS_PREPARING:
 		return nil, nil
 	default:
-		panic(fmt.Sprintf("unknown error %v", repo))
+		return nil, apperror.New(apperror.CodeInternal, "get repo internal error")
 	}
 }
 
