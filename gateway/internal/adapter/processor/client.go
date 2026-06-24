@@ -84,7 +84,9 @@ func (p Processor) GetSubscribedRepository(ctx context.Context) ([](*domain.Repo
 			result[k] = nil
 			continue
 		default:
-			panic(fmt.Sprintf("unexpected error %v", repo))
+			fmt.Printf("unexpected status %v of %v", repo.Status, repo)
+			result[k] = nil
+			continue
 		}
 	}
 
